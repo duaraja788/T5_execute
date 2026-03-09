@@ -353,3 +353,74 @@ contract T5_execute {
     }
 
     function computePayloadHash(bytes calldata payload) external pure returns (bytes32) {
+        return keccak256(payload);
+    }
+
+    function computeResultHash(bytes32 payloadHash, bytes32 executionDigest) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(payloadHash, executionDigest));
+    }
+
+    function version() external pure returns (uint256) {
+        return TX5_VERSION;
+    }
+
+    function namespaceHash() external pure returns (bytes32) {
+        return TX5_NAMESPACE;
+    }
+
+    function cooldownBlocks() external pure returns (uint256) {
+        return TX5_COOLDOWN_BLOCKS;
+    }
+
+    function maxMissions() external pure returns (uint256) {
+        return TX5_MAX_MISSIONS;
+    }
+
+    function withdrawCapWei() external pure returns (uint256) {
+        return TX5_WITHDRAW_CAP_WEI;
+    }
+
+    function maxBatchQueue() external pure returns (uint256) {
+        return TX5_MAX_BATCH_QUEUE;
+    }
+
+    function genesisBlockNumber() external view returns (uint256) {
+        return genesisBlock;
+    }
+
+    function blocksSinceGenesis() external view returns (uint256) {
+        return block.number - genesisBlock;
+    }
+
+    function missionCount() external view returns (uint256) {
+        return _nextMissionId;
+    }
+
+    function remainingMissionSlots() external view returns (uint256) {
+        return _nextMissionId >= TX5_MAX_MISSIONS ? 0 : TX5_MAX_MISSIONS - _nextMissionId;
+    }
+
+    function remainingWithdrawCap() external view returns (uint256) {
+        uint256 cap = TX5_WITHDRAW_CAP_WEI;
+        return _totalWithdrawnWei >= cap ? 0 : cap - _totalWithdrawnWei;
+    }
+
+    function executorAddress() external view returns (address) {
+        return executor;
+    }
+
+    function overseerAddress() external view returns (address) {
+        return overseer;
+    }
+
+    function guardianAddress() external view returns (address) {
+        return guardian;
+    }
+
+    function isPaused() external view returns (bool) {
+        return registryPaused;
+    }
+
+    function checkCooldown(uint256 missionId) external view returns (bool inCooldown, uint256 blocksRemaining) {
+        if (missionId >= _nextMissionId) return (true, type(uint256).max);
+        uint256 last = _lastExecutedBlock[missionId];
