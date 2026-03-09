@@ -140,3 +140,74 @@ contract T5_execute {
             unchecked { ++_nextMissionId; ++i; }
         }
         count = n;
+    }
+
+    function executeMission(uint256 missionId, bytes32 resultHash) external onlyExecutor whenNotPaused nonReentrant {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        MissionSlot storage slot = _missions[missionId];
+        if (slot.terminated) revert TX5_MissionAlreadyTerminated();
+        if (slot.payloadHash == bytes32(0)) revert TX5_MissionNotQueued();
+        if (block.number > slot.deadlineBlock) revert TX5_DeadlineElapsed();
+        uint256 lastExec = _lastExecutedBlock[missionId];
+        if (lastExec != 0 && block.number < lastExec + TX5_COOLDOWN_BLOCKS) revert TX5_CooldownActive();
+        _lastExecutedBlock[missionId] = block.number;
+        unchecked { _executionCount[msg.sender]++; }
+        uint8 fromPhase = slot.phase;
+        slot.phase = 2;
+        emit MissionExecuted(missionId, block.number, resultHash);
+        emit PhaseAdvanced(missionId, fromPhase, 2);
+    }
+
+    function terminateMission(uint256 missionId) external onlyGuardian nonReentrant {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        MissionSlot storage slot = _missions[missionId];
+        if (slot.terminated) revert TX5_MissionAlreadyTerminated();
+        slot.terminated = true;
+        slot.phase = 3;
+        emit MissionTerminated(missionId, block.number, msg.sender);
+    }
+
+    function bindTarget(uint256 missionId, address target, uint256 slotIndex) external onlyOverseer whenNotPaused nonReentrant {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        if (target == address(0)) revert TX5_InvalidBound();
+        MissionSlot storage slot = _missions[missionId];
+        if (slot.terminated) revert TX5_MissionAlreadyTerminated();
+        if (slot.boundTarget != address(0)) revert TX5_TargetAlreadyBound();
+        slot.boundTarget = target;
+        emit TargetBound(missionId, target, slotIndex);
+    }
+
+    function togglePause() external onlyGuardian {
+        registryPaused = !registryPaused;
+        emit RegistryPauseToggled(registryPaused);
+    }
+
+    function getMission(uint256 missionId) external view returns (
+        bytes32 payloadHash,
+        uint256 deadlineBlock,
+        uint256 queuedBlock,
+        uint8 phase,
+        bool terminated,
+        address boundTarget
+    ) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        MissionSlot storage s = _missions[missionId];
+        return (s.payloadHash, s.deadlineBlock, s.queuedBlock, s.phase, s.terminated, s.boundTarget);
+    }
+
+    function lastExecutedBlock(uint256 missionId) external view returns (uint256) {
+        return _lastExecutedBlock[missionId];
+    }
+
+    function executionCountFor(address account) external view returns (uint256) {
+        return _executionCount[account];
+    }
+
+    function nextMissionId() external view returns (uint256) {
+        return _nextMissionId;
+    }
+
+    receive() external payable {}
+
+    function withdrawTo(address to, uint256 amountWei) external onlyOverseer nonReentrant {
+        if (to == address(0) || amountWei == 0) revert TX5_ZeroAmount();
