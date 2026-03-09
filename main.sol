@@ -1063,3 +1063,74 @@ contract T5_execute {
         for (uint256 i; i < _nextMissionId; ) {
             if (_missions[i].phase == phase) {
                 temp[count] = i;
+                unchecked { ++count; }
+            }
+            unchecked { ++i; }
+        }
+        ids = new uint256[](count);
+        for (uint256 j; j < count; ) {
+            ids[j] = temp[j];
+            unchecked { ++j; }
+        }
+    }
+
+    function getMissionIdsTerminated() external view returns (uint256[] memory ids) {
+        uint256[] memory temp = new uint256[](_nextMissionId);
+        uint256 count;
+        for (uint256 i; i < _nextMissionId; ) {
+            if (_missions[i].terminated) {
+                temp[count] = i;
+                unchecked { ++count; }
+            }
+            unchecked { ++i; }
+        }
+        ids = new uint256[](count);
+        for (uint256 j; j < count; ) {
+            ids[j] = temp[j];
+            unchecked { ++j; }
+        }
+    }
+
+    function getMissionIdsPastDeadline() external view returns (uint256[] memory ids) {
+        uint256[] memory temp = new uint256[](_nextMissionId);
+        uint256 count;
+        for (uint256 i; i < _nextMissionId; ) {
+            if (!_missions[i].terminated && block.number > _missions[i].deadlineBlock) {
+                temp[count] = i;
+                unchecked { ++count; }
+            }
+            unchecked { ++i; }
+        }
+        ids = new uint256[](count);
+        for (uint256 j; j < count; ) {
+            ids[j] = temp[j];
+            unchecked { ++j; }
+        }
+    }
+
+    function totalMissionsQueued() external view returns (uint256) {
+        return _nextMissionId;
+    }
+
+    function missionIdRange() external view returns (uint256 minId, uint256 maxId) {
+        if (_nextMissionId == 0) return (0, 0);
+        return (0, _nextMissionId - 1);
+    }
+
+    function hasMissions() external view returns (bool) {
+        return _nextMissionId > 0;
+    }
+
+    function isEmpty() external view returns (bool) {
+        return _nextMissionId == 0;
+    }
+
+    function firstMissionId() external view returns (uint256) {
+        return 0;
+    }
+
+    function lastMissionId() external view returns (uint256) {
+        return _nextMissionId == 0 ? 0 : _nextMissionId - 1;
+    }
+
+    function nextAvailableMissionId() external view returns (uint256) {
