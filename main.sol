@@ -708,3 +708,74 @@ contract T5_execute {
         }
     }
 
+    function _requireValidMission(uint256 missionId) internal view {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+    }
+
+    function _missionSlot(uint256 missionId) internal view returns (MissionSlot storage) {
+        _requireValidMission(missionId);
+        return _missions[missionId];
+    }
+
+    function internalPayloadHash(uint256 missionId) external view returns (bytes32) {
+        return _missions[missionId].payloadHash;
+    }
+
+    function internalDeadline(uint256 missionId) external view returns (uint256) {
+        return _missions[missionId].deadlineBlock;
+    }
+
+    function getMissionPhaseName(uint256 missionId) external view returns (string memory) {
+        if (missionId >= _nextMissionId) return "NONE";
+        return resolvePhaseName(_missions[missionId].phase);
+    }
+
+    function allPhaseNames() external pure returns (string memory p1, string memory p2, string memory p3) {
+        return ("QUEUED", "EXECUTED", "TERMINATED");
+    }
+
+    function chainId() external view returns (uint256) {
+        return block.chainid;
+    }
+
+    function blockNumber() external view returns (uint256) {
+        return block.number;
+    }
+
+    function timestamp() external view returns (uint256) {
+        return block.timestamp;
+    }
+
+    function contractBalance() external view returns (uint256) {
+        return address(this).balance;
+    }
+
+    function canWithdraw(uint256 amountWei) external view returns (bool) {
+        return _totalWithdrawnWei + amountWei <= TX5_WITHDRAW_CAP_WEI;
+    }
+
+    function withdrawableRemaining() external view returns (uint256) {
+        uint256 cap = TX5_WITHDRAW_CAP_WEI;
+        return _totalWithdrawnWei >= cap ? 0 : cap - _totalWithdrawnWei;
+    }
+
+    function isExecutor(address account) external view returns (bool) {
+        return account == executor;
+    }
+
+    function isOverseer(address account) external view returns (bool) {
+        return account == overseer;
+    }
+
+    function isGuardian(address account) external view returns (bool) {
+        return account == guardian;
+    }
+
+    function hasRole(bytes32 roleHash, address account) external view returns (bool) {
+        if (roleHash == keccak256("EXECUTOR")) return account == executor;
+        if (roleHash == keccak256("OVERSEER")) return account == overseer;
+        if (roleHash == keccak256("GUARDIAN")) return account == guardian;
+        return false;
+    }
+
+    function getMissionIdsInRange(uint256 start, uint256 end) external view returns (uint256[] memory) {
