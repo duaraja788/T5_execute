@@ -1418,3 +1418,63 @@ contract T5_execute {
         if (missionId >= _nextMissionId) return false;
         MissionSlot storage s = _missions[missionId];
         bytes32 actual = keccak256(abi.encodePacked(missionId, s.payloadHash, s.deadlineBlock, s.queuedBlock, s.phase));
+        return actual == expectedDigest;
+    }
+
+    function slotPayloadHash(uint256 missionId) external view returns (bytes32) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].payloadHash;
+    }
+
+    function slotDeadline(uint256 missionId) external view returns (uint256) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].deadlineBlock;
+    }
+
+    function getPhaseDistribution() external view returns (uint256 phase1, uint256 phase2, uint256 phase3) {
+        for (uint256 i; i < _nextMissionId; ) {
+            uint8 p = _missions[i].phase;
+            if (p == 1) unchecked { ++phase1; }
+            else if (p == 2) unchecked { ++phase2; }
+            else if (p == 3) unchecked { ++phase3; }
+            unchecked { ++i; }
+        }
+    }
+
+    function getStats() external view returns (
+        uint256 totalMissions,
+        uint256 totalTerminated,
+        uint256 totalExecuted,
+        uint256 totalQueued,
+        uint256 totalWithdrawnWei,
+        uint256 remainingWithdrawCap
+    ) {
+        totalMissions = _nextMissionId;
+        totalWithdrawnWei = _totalWithdrawnWei;
+        remainingWithdrawCap = _totalWithdrawnWei >= TX5_WITHDRAW_CAP_WEI ? 0 : TX5_WITHDRAW_CAP_WEI - _totalWithdrawnWei;
+        for (uint256 i; i < _nextMissionId; ) {
+            if (_missions[i].terminated) unchecked { ++totalTerminated; }
+            else if (_missions[i].phase == 2) unchecked { ++totalExecuted; }
+            else if (_missions[i].phase == 1) unchecked { ++totalQueued; }
+            unchecked { ++i; }
+        }
+    }
+
+    function quoteIdentifier() external pure returns (string memory) {
+        return "I'll be back.";
+    }
+
+    function protocolName() external pure returns (string memory) {
+        return "Terminus Vanguard Execution Ledger";
+    }
+
+    function protocolShortName() external pure returns (string memory) {
+        return "T5_execute";
+    }
+
+    function roleNames() external pure returns (string memory exec, string memory over, string memory guard) {
+        return ("executor", "overseer", "guardian");
+    }
+
+    uint256[47] private __gap;
+}
