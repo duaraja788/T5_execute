@@ -69,3 +69,74 @@ contract T5_execute {
     modifier onlyExecutor() {
         if (msg.sender != executor) revert TX5_NotExecutor();
         _;
+    }
+
+    modifier onlyOverseer() {
+        if (msg.sender != overseer) revert TX5_NotOverseer();
+        _;
+    }
+
+    modifier onlyGuardian() {
+        if (msg.sender != guardian) revert TX5_NotGuardian();
+        _;
+    }
+
+    modifier whenNotPaused() {
+        if (registryPaused) revert TX5_RegistryPaused();
+        _;
+    }
+
+    modifier nonReentrant() {
+        if (_reentrancyLock != 0) revert TX5_ReentrancyLock();
+        _reentrancyLock = 1;
+        _;
+        _reentrancyLock = 0;
+    }
+
+    constructor() {
+        executor = 0x9D7f2E4a6C8b0d2F4a6B8c0D2e4F6a8B0c2D4e6;
+        overseer = 0x3E5a7C9e1B3d5F7a9c1E3b5D7f9A1c3E5b7D9f1;
+        guardian = 0xB2d4F6a8C0e2A4b6D8f0C2e4A6b8D0f2C4e6A8;
+        genesisBlock = block.number;
+    }
+
+    function queueMission(bytes32 payloadHash, uint256 deadlineBlock) external onlyExecutor whenNotPaused nonReentrant returns (uint256 missionId) {
+        if (payloadHash == bytes32(0)) revert TX5_ZeroPayload();
+        if (_nextMissionId >= TX5_MAX_MISSIONS) revert TX5_MaxMissionsReached();
+        if (deadlineBlock <= block.number) revert TX5_DeadlineElapsed();
+        missionId = _nextMissionId;
+        unchecked { ++_nextMissionId; }
+        _missions[missionId] = MissionSlot({
+            payloadHash: payloadHash,
+            deadlineBlock: deadlineBlock,
+            queuedBlock: block.number,
+            phase: 1,
+            terminated: false,
+            boundTarget: address(0)
+        });
+        emit MissionQueued(missionId, payloadHash, deadlineBlock, msg.sender);
+    }
+
+    function queueMissionBatch(bytes32[] calldata payloadHashes, uint256[] calldata deadlineBlocks) external onlyExecutor whenNotPaused nonReentrant returns (uint256 startId, uint256 count) {
+        uint256 n = payloadHashes.length;
+        if (n == 0 || n != deadlineBlocks.length) revert TX5_BatchLengthMismatch();
+        if (n > TX5_MAX_BATCH_QUEUE) revert TX5_BatchTooLarge();
+        if (_nextMissionId + n > TX5_MAX_MISSIONS) revert TX5_MaxMissionsReached();
+        startId = _nextMissionId;
+        uint256 blk = block.number;
+        for (uint256 i; i < n; ) {
+            bytes32 ph = payloadHashes[i];
+            uint256 dl = deadlineBlocks[i];
+            if (ph == bytes32(0) || dl <= blk) revert TX5_ZeroPayload();
+            _missions[_nextMissionId] = MissionSlot({
+                payloadHash: ph,
+                deadlineBlock: dl,
+                queuedBlock: blk,
+                phase: 1,
+                terminated: false,
+                boundTarget: address(0)
+            });
+            emit MissionQueued(_nextMissionId, ph, dl, msg.sender);
+            unchecked { ++_nextMissionId; ++i; }
+        }
+        count = n;
