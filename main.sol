@@ -921,3 +921,74 @@ contract T5_execute {
     function incrementNonce(uint256 missionId) external onlyExecutor nonReentrant returns (uint256 newNonce) {
         if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
         newNonce = _missionNonce[missionId] + 1;
+        _missionNonce[missionId] = newNonce;
+    }
+
+    event MissionNonceIncremented(uint256 indexed missionId, uint256 newNonce);
+
+    function incrementNonceAndEmit(uint256 missionId) external onlyExecutor nonReentrant {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        unchecked { ++_missionNonce[missionId]; }
+        emit MissionNonceIncremented(missionId, _missionNonce[missionId]);
+    }
+
+    function getMissionWithNonce(uint256 missionId) external view returns (
+        bytes32 payloadHash,
+        uint256 deadlineBlock,
+        uint256 queuedBlock,
+        uint8 phase,
+        bool terminated,
+        address boundTarget,
+        uint256 nonce
+    ) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        MissionSlot storage s = _missions[missionId];
+        return (
+            s.payloadHash,
+            s.deadlineBlock,
+            s.queuedBlock,
+            s.phase,
+            s.terminated,
+            s.boundTarget,
+            _missionNonce[missionId]
+        );
+    }
+
+    function batchNonces(uint256[] calldata missionIds) external view returns (uint256[] memory nonces) {
+        uint256 n = missionIds.length;
+        if (n > 64) revert TX5_BatchTooLarge();
+        nonces = new uint256[](n);
+        for (uint256 i; i < n; ) {
+            if (missionIds[i] < _nextMissionId) nonces[i] = _missionNonce[missionIds[i]];
+            unchecked { ++i; }
+        }
+    }
+
+    struct MissionView {
+        uint256 missionId;
+        bytes32 payloadHash;
+        uint256 deadlineBlock;
+        uint256 queuedBlock;
+        uint8 phase;
+        bool terminated;
+        address boundTarget;
+        uint256 lastExecutedBlockNum;
+        uint256 nonce;
+    }
+
+    function getMissionView(uint256 missionId) external view returns (MissionView memory v) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        MissionSlot storage s = _missions[missionId];
+        v.missionId = missionId;
+        v.payloadHash = s.payloadHash;
+        v.deadlineBlock = s.deadlineBlock;
+        v.queuedBlock = s.queuedBlock;
+        v.phase = s.phase;
+        v.terminated = s.terminated;
+        v.boundTarget = s.boundTarget;
+        v.lastExecutedBlockNum = _lastExecutedBlock[missionId];
+        v.nonce = _missionNonce[missionId];
+    }
+
+    function getMissionViewsBatch(uint256[] calldata missionIds) external view returns (MissionView[] memory views) {
+        uint256 n = missionIds.length;
