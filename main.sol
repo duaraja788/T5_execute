@@ -637,3 +637,74 @@ contract T5_execute {
         if (offset >= _nextMissionId) return new uint256[](0);
         uint256 n = end - offset;
         ids = new uint256[](n);
+        for (uint256 i; i < n; ) {
+            ids[i] = offset + i;
+            unchecked { ++i; }
+        }
+    }
+
+    function countTerminated() external view returns (uint256 count) {
+        for (uint256 i; i < _nextMissionId; ) {
+            if (_missions[i].terminated) unchecked { ++count; }
+            unchecked { ++i; }
+        }
+    }
+
+    function countByPhase(uint8 phase) external view returns (uint256 count) {
+        for (uint256 i; i < _nextMissionId; ) {
+            if (_missions[i].phase == phase && !_missions[i].terminated) unchecked { ++count; }
+            unchecked { ++i; }
+        }
+    }
+
+    function getMissionDeadlines(uint256[] calldata missionIds) external view returns (uint256[] memory deadlines) {
+        uint256 n = missionIds.length;
+        if (n > 64) revert TX5_BatchTooLarge();
+        deadlines = new uint256[](n);
+        for (uint256 i; i < n; ) {
+            uint256 mid = missionIds[i];
+            if (mid < _nextMissionId) deadlines[i] = _missions[mid].deadlineBlock;
+            else deadlines[i] = 0;
+            unchecked { ++i; }
+        }
+    }
+
+    function getMissionPayloadHashes(uint256[] calldata missionIds) external view returns (bytes32[] memory hashes) {
+        uint256 n = missionIds.length;
+        if (n > 64) revert TX5_BatchTooLarge();
+        hashes = new bytes32[](n);
+        for (uint256 i; i < n; ) {
+            uint256 mid = missionIds[i];
+            if (mid < _nextMissionId) hashes[i] = _missions[mid].payloadHash;
+            unchecked { ++i; }
+        }
+    }
+
+    function isWithinDeadline(uint256 missionId) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return block.number <= _missions[missionId].deadlineBlock;
+    }
+
+    function blocksUntilDeadline(uint256 missionId) external view returns (uint256 blocks) {
+        if (missionId >= _nextMissionId) return 0;
+        uint256 dl = _missions[missionId].deadlineBlock;
+        return block.number >= dl ? 0 : dl - block.number;
+    }
+
+    function missionAge(uint256 missionId) external view returns (uint256 blocks) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        uint256 q = _missions[missionId].queuedBlock;
+        return block.number - q;
+    }
+
+    function missionAgesBatch(uint256[] calldata missionIds) external view returns (uint256[] memory ages) {
+        uint256 n = missionIds.length;
+        if (n > 64) revert TX5_BatchTooLarge();
+        ages = new uint256[](n);
+        for (uint256 i; i < n; ) {
+            uint256 mid = missionIds[i];
+            if (mid < _nextMissionId) ages[i] = block.number - _missions[mid].queuedBlock;
+            unchecked { ++i; }
+        }
+    }
+
