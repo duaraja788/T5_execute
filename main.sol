@@ -1276,3 +1276,74 @@ contract T5_execute {
 
     function genesisBlockValue() external view returns (uint256) {
         return genesisBlock;
+    }
+
+    function reentrancyLockStatus() external view returns (bool locked) {
+        return _reentrancyLock != 0;
+    }
+
+    function pauseStatus() external view returns (bool) {
+        return registryPaused;
+    }
+
+    function name() external pure returns (string memory) {
+        return "Terminus Vanguard T5";
+    }
+
+    function symbol() external pure returns (string memory) {
+        return "TV5";
+    }
+
+    function decimals() external pure returns (uint8) {
+        return 0;
+    }
+
+    function description() external pure returns (string memory) {
+        return "On-chain mission registry for autonomous task dispatch.";
+    }
+
+    function contractType() external pure returns (bytes32) {
+        return keccak256("TerminusVanguard.T5.Execute");
+    }
+
+    function interfaceId() external pure returns (bytes4) {
+        return 0x00000000;
+    }
+
+    function computeMissionEta(uint256 missionId) external view returns (uint256 blocksRemaining) {
+        if (missionId >= _nextMissionId) return 0;
+        uint256 dl = _missions[missionId].deadlineBlock;
+        blocksRemaining = block.number >= dl ? 0 : dl - block.number;
+    }
+
+    function computeCooldownRemaining(uint256 missionId) external view returns (uint256 blocksRemaining) {
+        if (missionId >= _nextMissionId) return type(uint256).max;
+        uint256 last = _lastExecutedBlock[missionId];
+        if (last == 0) return 0;
+        uint256 end = last + TX5_COOLDOWN_BLOCKS;
+        return block.number >= end ? 0 : end - block.number;
+    }
+
+    function getMissionIdsPaginatedReverse(uint256 offset, uint256 limit) external view returns (uint256[] memory ids) {
+        if (limit > 100 || _nextMissionId == 0) revert TX5_BatchTooLarge();
+        uint256 start = offset >= _nextMissionId ? 0 : _nextMissionId - 1 - offset;
+        uint256 n = limit;
+        if (start + 1 < n) n = start + 1;
+        ids = new uint256[](n);
+        for (uint256 i; i < n; ) {
+            ids[i] = start - i;
+            unchecked { ++i; }
+        }
+    }
+
+    function getSlotsPaginated(uint256 offset, uint256 limit) external view returns (
+        uint256[] memory missionIds,
+        bytes32[] memory payloadHashes,
+        uint8[] memory phases
+    ) {
+        if (limit > 50) revert TX5_BatchTooLarge();
+        if (offset >= _nextMissionId) return (new uint256[](0), new bytes32[](0), new uint8[](0));
+        uint256 end = offset + limit;
+        if (end > _nextMissionId) end = _nextMissionId;
+        uint256 n = end - offset;
+        missionIds = new uint256[](n);
