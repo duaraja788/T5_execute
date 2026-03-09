@@ -495,3 +495,74 @@ contract T5_execute {
 
     function getConfig() external view returns (
         uint256 maxMissions_,
+        uint256 cooldownBlocks_,
+        uint256 maxBatchQueue_,
+        uint256 withdrawCapWei_,
+        uint256 version_
+    ) {
+        return (TX5_MAX_MISSIONS, TX5_COOLDOWN_BLOCKS, TX5_MAX_BATCH_QUEUE, TX5_WITHDRAW_CAP_WEI, TX5_VERSION);
+    }
+
+    function executorRoleHash() external pure returns (bytes32) {
+        return keccak256("EXECUTOR");
+    }
+
+    function overseerRoleHash() external pure returns (bytes32) {
+        return keccak256("OVERSEER");
+    }
+
+    function guardianRoleHash() external pure returns (bytes32) {
+        return keccak256("GUARDIAN");
+    }
+
+    event AuxCounterIncremented(uint256 newValue);
+
+    function incrementAndEmitAux() external onlyExecutor nonReentrant {
+        unchecked { ++_auxCounter; }
+        emit AuxCounterIncremented(_auxCounter);
+    }
+
+    function multiIncrementAux(uint256 times) external onlyExecutor nonReentrant returns (uint256 endValue) {
+        if (times == 0 || times > 100) revert TX5_InvalidPhase();
+        for (uint256 i; i < times; ) {
+            unchecked { ++_auxCounter; ++i; }
+        }
+        endValue = _auxCounter;
+        emit AuxCounterIncremented(endValue);
+    }
+
+    function getRoleAddresses() external view returns (address exec, address over, address guard) {
+        return (executor, overseer, guardian);
+    }
+
+    function supportsInterface(bytes4) external pure returns (bool) {
+        return false;
+    }
+
+    function domainSeparatorV5() external view returns (bytes32) {
+        return keccak256(abi.encodePacked(
+            "TerminusVanguard.T5",
+            block.chainid,
+            address(this)
+        ));
+    }
+
+    bytes32 public constant EIP712_DOMAIN_TYPEHASH = keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
+
+    function eip712DomainTypeHash() external pure returns (bytes32) {
+        return EIP712_DOMAIN_TYPEHASH;
+    }
+
+    struct MissionDigest {
+        uint256 missionId;
+        bytes32 payloadHash;
+        uint256 deadlineBlock;
+    }
+
+    function hashMissionDigest(MissionDigest calldata d) external pure returns (bytes32) {
+        return keccak256(abi.encode(d.missionId, d.payloadHash, d.deadlineBlock));
+    }
+
+    function requireMissionExists(uint256 missionId) external view {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+    }
