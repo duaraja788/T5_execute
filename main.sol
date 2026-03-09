@@ -992,3 +992,74 @@ contract T5_execute {
 
     function getMissionViewsBatch(uint256[] calldata missionIds) external view returns (MissionView[] memory views) {
         uint256 n = missionIds.length;
+        if (n > 32) revert TX5_BatchTooLarge();
+        views = new MissionView[](n);
+        for (uint256 i; i < n; ) {
+            uint256 mid = missionIds[i];
+            if (mid < _nextMissionId) {
+                MissionSlot storage s = _missions[mid];
+                views[i] = MissionView({
+                    missionId: mid,
+                    payloadHash: s.payloadHash,
+                    deadlineBlock: s.deadlineBlock,
+                    queuedBlock: s.queuedBlock,
+                    phase: s.phase,
+                    terminated: s.terminated,
+                    boundTarget: s.boundTarget,
+                    lastExecutedBlockNum: _lastExecutedBlock[mid],
+                    nonce: _missionNonce[mid]
+                });
+            }
+            unchecked { ++i; }
+        }
+    }
+
+    function slotPhase(uint256 missionId) external view returns (uint8) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].phase;
+    }
+
+    function slotTerminated(uint256 missionId) external view returns (bool) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].terminated;
+    }
+
+    function slotBoundTarget(uint256 missionId) external view returns (address) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].boundTarget;
+    }
+
+    function slotQueuedBlock(uint256 missionId) external view returns (uint256) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].queuedBlock;
+    }
+
+    function verifyPayloadMatch(uint256 missionId, bytes32 payloadHash) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return _missions[missionId].payloadHash == payloadHash;
+    }
+
+    function verifyDeadlineFuture(uint256 missionId) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return block.number < _missions[missionId].deadlineBlock;
+    }
+
+    function verifyNotTerminated(uint256 missionId) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return !_missions[missionId].terminated;
+    }
+
+    function verifyAll(uint256 missionId, bytes32 payloadHash) external view returns (bool payloadOk, bool deadlineOk, bool notTerminated) {
+        if (missionId >= _nextMissionId) return (false, false, false);
+        MissionSlot storage s = _missions[missionId];
+        payloadOk = s.payloadHash == payloadHash;
+        deadlineOk = block.number < s.deadlineBlock;
+        notTerminated = !s.terminated;
+    }
+
+    function getMissionIdsWithPhase(uint8 phase) external view returns (uint256[] memory ids) {
+        uint256[] memory temp = new uint256[](_nextMissionId);
+        uint256 count;
+        for (uint256 i; i < _nextMissionId; ) {
+            if (_missions[i].phase == phase) {
+                temp[count] = i;
