@@ -850,3 +850,74 @@ contract T5_execute {
     function countExecutableInRange(uint256 fromId, uint256 toId) external view returns (uint256 count) {
         if (fromId > toId || toId >= _nextMissionId) return 0;
         for (uint256 i = fromId; i <= toId; ) {
+            MissionSlot storage s = _missions[i];
+            if (!s.terminated && s.payloadHash != bytes32(0) && block.number <= s.deadlineBlock) {
+                uint256 last = _lastExecutedBlock[i];
+                if (last == 0 || block.number >= last + TX5_COOLDOWN_BLOCKS) unchecked { ++count; }
+            }
+            unchecked { ++i; }
+        }
+    }
+
+    function getExecutableMissionIds(uint256 fromId, uint256 limit) external view returns (uint256[] memory ids) {
+        if (limit > 50) revert TX5_BatchTooLarge();
+        uint256[] memory temp = new uint256[](limit);
+        uint256 count;
+        for (uint256 i = fromId; i < _nextMissionId && count < limit; ) {
+            MissionSlot storage s = _missions[i];
+            if (!s.terminated && s.payloadHash != bytes32(0) && block.number <= s.deadlineBlock) {
+                uint256 last = _lastExecutedBlock[i];
+                if (last == 0 || block.number >= last + TX5_COOLDOWN_BLOCKS) {
+                    temp[count] = i;
+                    unchecked { ++count; }
+                }
+            }
+            unchecked { ++i; }
+        }
+        ids = new uint256[](count);
+        for (uint256 j; j < count; ) {
+            ids[j] = temp[j];
+            unchecked { ++j; }
+        }
+    }
+
+    function hashPayloadWithNonce(bytes32 payloadHash, uint256 nonce) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(payloadHash, nonce));
+    }
+
+    function hashPayloadWithNonceAndSender(bytes32 payloadHash, uint256 nonce, address sender) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(payloadHash, nonce, sender));
+    }
+
+    function combineHashes(bytes32 a, bytes32 b) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(a, b));
+    }
+
+    function combineHashesThree(bytes32 a, bytes32 b, bytes32 c) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(a, b, c));
+    }
+
+    bytes32 public constant MISSION_QUEUED_TYPEHASH = keccak256("MissionQueued(uint256 missionId,bytes32 payloadHash,uint256 deadlineBlock)");
+
+    function missionQueuedTypeHash() external pure returns (bytes32) {
+        return MISSION_QUEUED_TYPEHASH;
+    }
+
+    function encodeMissionQueued(uint256 missionId, bytes32 payloadHash, uint256 deadlineBlock) external pure returns (bytes memory) {
+        return abi.encode(missionId, payloadHash, deadlineBlock);
+    }
+
+    function hashEncodedMissionQueued(bytes memory data) external pure returns (bytes32) {
+        return keccak256(data);
+    }
+
+    mapping(uint256 => uint256) private _missionNonce;
+
+    function nonceOf(uint256 missionId) external view returns (uint256) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missionNonce[missionId];
+    }
+
+    function incrementNonce(uint256 missionId) external onlyExecutor nonReentrant returns (uint256 newNonce) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        newNonce = _missionNonce[missionId] + 1;
