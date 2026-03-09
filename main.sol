@@ -779,3 +779,74 @@ contract T5_execute {
     }
 
     function getMissionIdsInRange(uint256 start, uint256 end) external view returns (uint256[] memory) {
+        if (start > end || end >= _nextMissionId) revert TX5_InvalidMissionId();
+        uint256 n = end - start + 1;
+        if (n > 80) revert TX5_BatchTooLarge();
+        uint256[] memory ids = new uint256[](n);
+        for (uint256 i; i < n; ) {
+            ids[i] = start + i;
+            unchecked { ++i; }
+        }
+        return ids;
+    }
+
+    function getMissionStatus(uint256 missionId) external view returns (
+        bool exists,
+        bool queued,
+        bool executed,
+        bool terminated,
+        uint256 blocksLeft
+    ) {
+        exists = missionId < _nextMissionId;
+        if (!exists) return (false, false, false, false, 0);
+        MissionSlot storage s = _missions[missionId];
+        queued = s.payloadHash != bytes32(0);
+        executed = s.phase >= 2;
+        terminated = s.terminated;
+        blocksLeft = block.number >= s.deadlineBlock ? 0 : s.deadlineBlock - block.number;
+    }
+
+    function getMissionStatusBatch(uint256[] calldata missionIds) external view returns (
+        bool[] memory exists,
+        bool[] memory queued,
+        bool[] memory executed,
+        bool[] memory terminated,
+        uint256[] memory blocksLeft
+    ) {
+        uint256 n = missionIds.length;
+        if (n > 64) revert TX5_BatchTooLarge();
+        exists = new bool[](n);
+        queued = new bool[](n);
+        executed = new bool[](n);
+        terminated = new bool[](n);
+        blocksLeft = new uint256[](n);
+        for (uint256 i; i < n; ) {
+            uint256 mid = missionIds[i];
+            exists[i] = mid < _nextMissionId;
+            if (exists[i]) {
+                MissionSlot storage s = _missions[mid];
+                queued[i] = s.payloadHash != bytes32(0);
+                executed[i] = s.phase >= 2;
+                terminated[i] = s.terminated;
+                blocksLeft[i] = block.number >= s.deadlineBlock ? 0 : s.deadlineBlock - block.number;
+            }
+            unchecked { ++i; }
+        }
+    }
+
+    function findFirstExecutableMission(uint256 fromId, uint256 toId) external view returns (uint256 missionId, bool found) {
+        if (fromId > toId || toId >= _nextMissionId) return (0, false);
+        for (uint256 i = fromId; i <= toId; ) {
+            MissionSlot storage s = _missions[i];
+            if (!s.terminated && s.payloadHash != bytes32(0) && block.number <= s.deadlineBlock) {
+                uint256 last = _lastExecutedBlock[i];
+                if (last == 0 || block.number >= last + TX5_COOLDOWN_BLOCKS) return (i, true);
+            }
+            unchecked { ++i; }
+        }
+        return (0, false);
+    }
+
+    function countExecutableInRange(uint256 fromId, uint256 toId) external view returns (uint256 count) {
+        if (fromId > toId || toId >= _nextMissionId) return 0;
+        for (uint256 i = fromId; i <= toId; ) {
