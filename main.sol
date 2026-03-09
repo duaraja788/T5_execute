@@ -282,3 +282,74 @@ contract T5_execute {
         exists = missionId < _nextMissionId;
         if (!exists) return (false, false, false, false);
         MissionSlot storage s = _missions[missionId];
+        terminated = s.terminated;
+        pastDeadline = block.number > s.deadlineBlock;
+        uint256 last = _lastExecutedBlock[missionId];
+        inCooldown = last != 0 && block.number < last + TX5_COOLDOWN_BLOCKS;
+    }
+
+    function batchMissionSummaries(uint256[] calldata missionIds) external view returns (
+        bool[] memory exists,
+        bool[] memory terminated,
+        bool[] memory pastDeadline,
+        bool[] memory inCooldown
+    ) {
+        uint256 n = missionIds.length;
+        if (n > 256) revert TX5_BatchTooLarge();
+        exists = new bool[](n);
+        terminated = new bool[](n);
+        pastDeadline = new bool[](n);
+        inCooldown = new bool[](n);
+        for (uint256 i; i < n; ) {
+            uint256 mid = missionIds[i];
+            exists[i] = mid < _nextMissionId;
+            if (exists[i]) {
+                MissionSlot storage s = _missions[mid];
+                terminated[i] = s.terminated;
+                pastDeadline[i] = block.number > s.deadlineBlock;
+                uint256 last = _lastExecutedBlock[mid];
+                inCooldown[i] = last != 0 && block.number < last + TX5_COOLDOWN_BLOCKS;
+            }
+            unchecked { ++i; }
+        }
+    }
+
+    function slotsBetween(uint256 fromId, uint256 toId) external view returns (
+        uint256[] memory missionIds,
+        bytes32[] memory payloadHashes,
+        uint256[] memory deadlineBlocks,
+        uint8[] memory phases,
+        bool[] memory terminatedFlags
+    ) {
+        if (fromId > toId || toId >= _nextMissionId) revert TX5_InvalidMissionId();
+        uint256 n = toId - fromId + 1;
+        if (n > 128) revert TX5_BatchTooLarge();
+        missionIds = new uint256[](n);
+        payloadHashes = new bytes32[](n);
+        deadlineBlocks = new uint256[](n);
+        phases = new uint8[](n);
+        terminatedFlags = new bool[](n);
+        for (uint256 i; i < n; ) {
+            uint256 mid = fromId + i;
+            MissionSlot storage s = _missions[mid];
+            missionIds[i] = mid;
+            payloadHashes[i] = s.payloadHash;
+            deadlineBlocks[i] = s.deadlineBlock;
+            phases[i] = s.phase;
+            terminatedFlags[i] = s.terminated;
+            unchecked { ++i; }
+        }
+    }
+
+    function advancePhase(uint256 missionId, uint8 newPhase) external onlyOverseer whenNotPaused nonReentrant {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        if (newPhase < 1 || newPhase > 3) revert TX5_InvalidPhase();
+        MissionSlot storage slot = _missions[missionId];
+        if (slot.terminated) revert TX5_MissionAlreadyTerminated();
+        uint8 fromPhase = slot.phase;
+        if (newPhase <= fromPhase) revert TX5_InvalidPhase();
+        slot.phase = newPhase;
+        emit PhaseAdvanced(missionId, fromPhase, newPhase);
+    }
+
+    function computePayloadHash(bytes calldata payload) external pure returns (bytes32) {
