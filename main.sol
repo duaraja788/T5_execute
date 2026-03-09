@@ -1347,3 +1347,74 @@ contract T5_execute {
         if (end > _nextMissionId) end = _nextMissionId;
         uint256 n = end - offset;
         missionIds = new uint256[](n);
+        payloadHashes = new bytes32[](n);
+        phases = new uint8[](n);
+        for (uint256 i; i < n; ) {
+            uint256 mid = offset + i;
+            missionIds[i] = mid;
+            payloadHashes[i] = _missions[mid].payloadHash;
+            phases[i] = _missions[mid].phase;
+            unchecked { ++i; }
+        }
+    }
+
+    function filterByPhase(uint8 phase, uint256 fromId, uint256 maxResults) external view returns (uint256[] memory ids) {
+        if (maxResults > 60) revert TX5_BatchTooLarge();
+        uint256[] memory temp = new uint256[](maxResults);
+        uint256 count;
+        for (uint256 i = fromId; i < _nextMissionId && count < maxResults; ) {
+            if (_missions[i].phase == phase) {
+                temp[count] = i;
+                unchecked { ++count; }
+            }
+            unchecked { ++i; }
+        }
+        ids = new uint256[](count);
+        for (uint256 j; j < count; ) {
+            ids[j] = temp[j];
+            unchecked { ++j; }
+        }
+    }
+
+    function filterByTerminated(bool terminated, uint256 fromId, uint256 maxResults) external view returns (uint256[] memory ids) {
+        if (maxResults > 60) revert TX5_BatchTooLarge();
+        uint256[] memory temp = new uint256[](maxResults);
+        uint256 count;
+        for (uint256 i = fromId; i < _nextMissionId && count < maxResults; ) {
+            if (_missions[i].terminated == terminated) {
+                temp[count] = i;
+                unchecked { ++count; }
+            }
+            unchecked { ++i; }
+        }
+        ids = new uint256[](count);
+        for (uint256 j; j < count; ) {
+            ids[j] = temp[j];
+            unchecked { ++j; }
+        }
+    }
+
+    function getMissionDigest(uint256 missionId) external view returns (bytes32 digest) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        MissionSlot storage s = _missions[missionId];
+        digest = keccak256(abi.encodePacked(missionId, s.payloadHash, s.deadlineBlock, s.queuedBlock, s.phase));
+    }
+
+    function getMissionDigestBatch(uint256[] calldata missionIds) external view returns (bytes32[] memory digests) {
+        uint256 n = missionIds.length;
+        if (n > 48) revert TX5_BatchTooLarge();
+        digests = new bytes32[](n);
+        for (uint256 i; i < n; ) {
+            uint256 mid = missionIds[i];
+            if (mid < _nextMissionId) {
+                MissionSlot storage s = _missions[mid];
+                digests[i] = keccak256(abi.encodePacked(mid, s.payloadHash, s.deadlineBlock, s.queuedBlock, s.phase));
+            }
+            unchecked { ++i; }
+        }
+    }
+
+    function verifyMissionDigest(uint256 missionId, bytes32 expectedDigest) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        MissionSlot storage s = _missions[missionId];
+        bytes32 actual = keccak256(abi.encodePacked(missionId, s.payloadHash, s.deadlineBlock, s.queuedBlock, s.phase));
