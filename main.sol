@@ -1134,3 +1134,74 @@ contract T5_execute {
     }
 
     function nextAvailableMissionId() external view returns (uint256) {
+        return _nextMissionId;
+    }
+
+    function configMaxMissions() external pure returns (uint256) {
+        return TX5_MAX_MISSIONS;
+    }
+
+    function configCooldownBlocks() external pure returns (uint256) {
+        return TX5_COOLDOWN_BLOCKS;
+    }
+
+    function configMaxBatchQueue() external pure returns (uint256) {
+        return TX5_MAX_BATCH_QUEUE;
+    }
+
+    function configWithdrawCapWei() external pure returns (uint256) {
+        return TX5_WITHDRAW_CAP_WEI;
+    }
+
+    function configVersion() external pure returns (uint256) {
+        return TX5_VERSION;
+    }
+
+    function selfAddress() external view returns (address) {
+        return address(this);
+    }
+
+    function executorBalance() external view returns (uint256) {
+        return executor.balance;
+    }
+
+    function overseerBalance() external view returns (uint256) {
+        return overseer.balance;
+    }
+
+    function guardianBalance() external view returns (uint256) {
+        return guardian.balance;
+    }
+
+    function addressBalance(address account) external view returns (uint256) {
+        return account.balance;
+    }
+
+    function boundTargetZero(uint256 missionId) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return _missions[missionId].boundTarget == address(0);
+    }
+
+    function hasBoundTarget(uint256 missionId) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return _missions[missionId].boundTarget != address(0);
+    }
+
+    function missionIdsWithBoundTargets(uint256 fromId, uint256 limit) external view returns (uint256[] memory ids) {
+        if (limit > 40) revert TX5_BatchTooLarge();
+        uint256[] memory temp = new uint256[](limit);
+        uint256 count;
+        for (uint256 i = fromId; i < _nextMissionId && count < limit; ) {
+            if (_missions[i].boundTarget != address(0)) {
+                temp[count] = i;
+                unchecked { ++count; }
+            }
+            unchecked { ++i; }
+        }
+        ids = new uint256[](count);
+        for (uint256 j; j < count; ) {
+            ids[j] = temp[j];
+            unchecked { ++j; }
+        }
+    }
+
