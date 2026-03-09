@@ -424,3 +424,74 @@ contract T5_execute {
     function checkCooldown(uint256 missionId) external view returns (bool inCooldown, uint256 blocksRemaining) {
         if (missionId >= _nextMissionId) return (true, type(uint256).max);
         uint256 last = _lastExecutedBlock[missionId];
+        if (last == 0) return (false, 0);
+        uint256 windowEnd = last + TX5_COOLDOWN_BLOCKS;
+        if (block.number >= windowEnd) return (false, 0);
+        return (true, windowEnd - block.number);
+    }
+
+    function getMissionFull(uint256 missionId) external view returns (
+        bytes32 payloadHash,
+        uint256 deadlineBlock,
+        uint256 queuedBlock,
+        uint8 phase,
+        bool terminated,
+        address boundTarget,
+        uint256 lastExecutedBlockNum
+    ) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        MissionSlot storage s = _missions[missionId];
+        return (
+            s.payloadHash,
+            s.deadlineBlock,
+            s.queuedBlock,
+            s.phase,
+            s.terminated,
+            s.boundTarget,
+            _lastExecutedBlock[missionId]
+        );
+    }
+
+    function hashMissionPayload(bytes32 a, bytes32 b, bytes32 c) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(a, b, c));
+    }
+
+    function hashMissionPayloadMany(bytes32[] calldata parts) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(parts));
+    }
+
+    function validateDeadline(uint256 missionId, uint256 asOfBlock) external view returns (bool valid) {
+        if (missionId >= _nextMissionId) return false;
+        return _missions[missionId].deadlineBlock > asOfBlock;
+    }
+
+    function validatePhaseTransition(uint8 fromPhase, uint8 toPhase) external pure returns (bool valid) {
+        return toPhase > fromPhase && fromPhase >= 1 && fromPhase <= 3 && toPhase >= 1 && toPhase <= 3;
+    }
+
+    uint256 private _auxCounter;
+
+    function auxIncrement() external onlyExecutor nonReentrant returns (uint256) {
+        unchecked { return ++_auxCounter; }
+    }
+
+    function auxCounter() external view returns (uint256) {
+        return _auxCounter;
+    }
+
+    mapping(bytes32 => uint256) private _payloadToFirstMissionId;
+
+    function firstMissionIdForPayload(bytes32 payloadHash) external view returns (uint256) {
+        return _payloadToFirstMissionId[payloadHash];
+    }
+
+    function registerPayloadToMission(bytes32 payloadHash, uint256 missionId) external onlyOverseer nonReentrant {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        if (_missions[missionId].payloadHash != payloadHash) revert TX5_InvalidMissionId();
+        if (_payloadToFirstMissionId[payloadHash] == 0) {
+            _payloadToFirstMissionId[payloadHash] = missionId;
+        }
+    }
+
+    function getConfig() external view returns (
+        uint256 maxMissions_,
