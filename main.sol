@@ -566,3 +566,74 @@ contract T5_execute {
     function requireMissionExists(uint256 missionId) external view {
         if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
     }
+
+    function requireMissionNotTerminated(uint256 missionId) external view {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        if (_missions[missionId].terminated) revert TX5_MissionAlreadyTerminated();
+    }
+
+    function requireMissionExecutable(uint256 missionId) external view {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        MissionSlot storage s = _missions[missionId];
+        if (s.terminated || s.payloadHash == bytes32(0)) revert TX5_MissionNotQueued();
+        if (block.number > s.deadlineBlock) revert TX5_DeadlineElapsed();
+        uint256 last = _lastExecutedBlock[missionId];
+        if (last != 0 && block.number < last + TX5_COOLDOWN_BLOCKS) revert TX5_CooldownActive();
+    }
+
+    mapping(uint256 => bytes32) private _resultHashes;
+
+    function setResultHash(uint256 missionId, bytes32 resultHash) external onlyExecutor nonReentrant {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        if (_missions[missionId].terminated) revert TX5_MissionAlreadyTerminated();
+        _resultHashes[missionId] = resultHash;
+    }
+
+    function resultHashOf(uint256 missionId) external view returns (bytes32) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _resultHashes[missionId];
+    }
+
+    function executeMissionWithResult(uint256 missionId, bytes32 resultHash) external onlyExecutor whenNotPaused nonReentrant {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        MissionSlot storage slot = _missions[missionId];
+        if (slot.terminated) revert TX5_MissionAlreadyTerminated();
+        if (slot.payloadHash == bytes32(0)) revert TX5_MissionNotQueued();
+        if (block.number > slot.deadlineBlock) revert TX5_DeadlineElapsed();
+        uint256 lastExec = _lastExecutedBlock[missionId];
+        if (lastExec != 0 && block.number < lastExec + TX5_COOLDOWN_BLOCKS) revert TX5_CooldownActive();
+        _lastExecutedBlock[missionId] = block.number;
+        _resultHashes[missionId] = resultHash;
+        unchecked { _executionCount[msg.sender]++; }
+        uint8 fromPhase = slot.phase;
+        slot.phase = 2;
+        emit MissionExecuted(missionId, block.number, resultHash);
+        emit PhaseAdvanced(missionId, fromPhase, 2);
+    }
+
+    function batchSetResultHashes(uint256[] calldata missionIds, bytes32[] calldata resultHashes) external onlyExecutor nonReentrant {
+        uint256 n = missionIds.length;
+        if (n != resultHashes.length || n == 0 || n > 32) revert TX5_BatchLengthMismatch();
+        for (uint256 i; i < n; ) {
+            uint256 mid = missionIds[i];
+            if (mid >= _nextMissionId) revert TX5_InvalidMissionId();
+            if (!_missions[mid].terminated) _resultHashes[mid] = resultHashes[i];
+            unchecked { ++i; }
+        }
+    }
+
+    function slotExists(uint256 missionId) external view returns (bool) {
+        return missionId < _nextMissionId;
+    }
+
+    function totalExecutionCount() external view returns (uint256 total) {
+        return _executionCount[executor] + _executionCount[overseer];
+    }
+
+    function getMissionIdsPaginated(uint256 offset, uint256 limit) external view returns (uint256[] memory ids) {
+        if (limit > 100) revert TX5_BatchTooLarge();
+        uint256 end = offset + limit;
+        if (end > _nextMissionId) end = _nextMissionId;
+        if (offset >= _nextMissionId) return new uint256[](0);
+        uint256 n = end - offset;
+        ids = new uint256[](n);
