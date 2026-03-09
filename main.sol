@@ -211,3 +211,74 @@ contract T5_execute {
 
     function withdrawTo(address to, uint256 amountWei) external onlyOverseer nonReentrant {
         if (to == address(0) || amountWei == 0) revert TX5_ZeroAmount();
+        if (_totalWithdrawnWei + amountWei > TX5_WITHDRAW_CAP_WEI) revert TX5_WithdrawOverCap();
+        _totalWithdrawnWei += amountWei;
+        (bool ok,) = to.call{value: amountWei}("");
+        if (!ok) revert TX5_WithdrawOverCap();
+        emit WithdrawalProcessed(to, amountWei);
+    }
+
+    function totalWithdrawnWei() external view returns (uint256) {
+        return _totalWithdrawnWei;
+    }
+
+    function isMissionTerminated(uint256 missionId) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return _missions[missionId].terminated;
+    }
+
+    function isMissionExecutable(uint256 missionId) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        MissionSlot storage s = _missions[missionId];
+        if (s.terminated || s.payloadHash == bytes32(0)) return false;
+        if (block.number > s.deadlineBlock) return false;
+        uint256 last = _lastExecutedBlock[missionId];
+        return last == 0 || block.number >= last + TX5_COOLDOWN_BLOCKS;
+    }
+
+    function payloadHashOf(uint256 missionId) external view returns (bytes32) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].payloadHash;
+    }
+
+    function deadlineBlockOf(uint256 missionId) external view returns (uint256) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].deadlineBlock;
+    }
+
+    function boundTargetOf(uint256 missionId) external view returns (address) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].boundTarget;
+    }
+
+    function phaseOf(uint256 missionId) external view returns (uint8) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].phase;
+    }
+
+    function queuedBlockOf(uint256 missionId) external view returns (uint256) {
+        if (missionId >= _nextMissionId) revert TX5_InvalidMissionId();
+        return _missions[missionId].queuedBlock;
+    }
+
+    bytes32 public constant TX5_NAMESPACE = keccak256("TerminusVanguard.T5");
+    uint256 public constant TX5_PHASE_QUEUED = 1;
+    uint256 public constant TX5_PHASE_EXECUTED = 2;
+    uint256 public constant TX5_PHASE_TERMINATED = 3;
+
+    function resolvePhaseName(uint8 phase) external pure returns (string memory) {
+        if (phase == 1) return "QUEUED";
+        if (phase == 2) return "EXECUTED";
+        if (phase == 3) return "TERMINATED";
+        return "UNKNOWN";
+    }
+
+    function missionSummary(uint256 missionId) external view returns (
+        bool exists,
+        bool terminated,
+        bool pastDeadline,
+        bool inCooldown
+    ) {
+        exists = missionId < _nextMissionId;
+        if (!exists) return (false, false, false, false);
+        MissionSlot storage s = _missions[missionId];
