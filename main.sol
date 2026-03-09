@@ -1205,3 +1205,74 @@ contract T5_execute {
         }
     }
 
+    function countBoundTargets() external view returns (uint256 count) {
+        for (uint256 i; i < _nextMissionId; ) {
+            if (_missions[i].boundTarget != address(0)) unchecked { ++count; }
+            unchecked { ++i; }
+        }
+    }
+
+    function getBoundTargetsBatch(uint256[] calldata missionIds) external view returns (address[] memory targets) {
+        uint256 n = missionIds.length;
+        if (n > 64) revert TX5_BatchTooLarge();
+        targets = new address[](n);
+        for (uint256 i; i < n; ) {
+            if (missionIds[i] < _nextMissionId) targets[i] = _missions[missionIds[i]].boundTarget;
+            unchecked { ++i; }
+        }
+    }
+
+    function payloadHashEquals(uint256 missionId, bytes32 h) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return _missions[missionId].payloadHash == h;
+    }
+
+    function deadlineBlockEquals(uint256 missionId, uint256 blockNum) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return _missions[missionId].deadlineBlock == blockNum;
+    }
+
+    function phaseEquals(uint256 missionId, uint8 p) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return _missions[missionId].phase == p;
+    }
+
+    function executionBlockOf(uint256 missionId) external view returns (uint256) {
+        return _lastExecutedBlock[missionId];
+    }
+
+    function executionBlocksBatch(uint256[] calldata missionIds) external view returns (uint256[] memory blocks) {
+        uint256 n = missionIds.length;
+        if (n > 64) revert TX5_BatchTooLarge();
+        blocks = new uint256[](n);
+        for (uint256 i; i < n; ) {
+            if (missionIds[i] < _nextMissionId) blocks[i] = _lastExecutedBlock[missionIds[i]];
+            unchecked { ++i; }
+        }
+    }
+
+    function wasEverExecuted(uint256 missionId) external view returns (bool) {
+        if (missionId >= _nextMissionId) return false;
+        return _lastExecutedBlock[missionId] != 0;
+    }
+
+    function executionCountBatch(address[] calldata accounts) external view returns (uint256[] memory counts) {
+        uint256 n = accounts.length;
+        if (n > 32) revert TX5_BatchTooLarge();
+        counts = new uint256[](n);
+        for (uint256 i; i < n; ) {
+            counts[i] = _executionCount[accounts[i]];
+            unchecked { ++i; }
+        }
+    }
+
+    function totalWithdrawn() external view returns (uint256) {
+        return _totalWithdrawnWei;
+    }
+
+    function withdrawCapTotal() external pure returns (uint256) {
+        return TX5_WITHDRAW_CAP_WEI;
+    }
+
+    function genesisBlockValue() external view returns (uint256) {
+        return genesisBlock;
